@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Star Crash</title>
+    <script src="https://telegram.org"></script>
+    <style>
+        body {
+            background-color: #0f1015;
+            color: #ffffff;
+            font-family: sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: space-between;
+            height: 100vh;
+            margin: 0;
+            padding: 16px;
+            box-sizing: border-box;
+            overflow: hidden;
+        }
+        .header {
+            width: 100%;
+            display: flex;
+            justify-content: space-between;
+            background: #1b1d26;
+            padding: 12px 18px;
+            border-radius: 16px;
+            box-sizing: border-box;
+        }
+        .balance-box { font-size: 18px; font-weight: bold; color: #ffb800; }
+        .game-area {
+            position: relative;
+            width: 100%;
+            flex-grow: 1;
+            margin: 16px 0;
+            background: radial-gradient(circle at bottom left, #1e2235, #0f1015);
+            border: 2px solid #262936;
+            border-radius: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+        .multiplier { font-size: 56px; font-weight: 900; z-index: 5; }
+        .crashed { color: #ff3b30; }
+        .win { color: #34c759; }
+        .sub-status { font-size: 16px; color: #8e8e93; margin-top: 8px; z-index: 5; height: 20px; }
+        .rocket { position: absolute; bottom: 20px; left: 20px; font-size: 48px; transition: transform 0.1s linear; }
+        .controls { width: 100%; background: #1b1d26; padding: 16px; border-radius: 20px; box-sizing: border-box; }
+        .bet-row { display: flex; justify-content: space-between; align-items: center; background: #12131a; padding: 8px 14px; border-radius: 12px; margin-bottom: 12px; }
+        .bet-btn { background: #2c2f3d; color: white; border: none; padding: 8px 14px; border-radius: 8px; font-weight: bold; font-size: 16px; }
+        .main-btn { width: 100%; padding: 18px; font-size: 18px; font-weight: 800; border: none; border-radius: 14px; }
+        .btn-start { background: #ffb800; color: #000; }
+        .btn-cashout { background: #34c759; color: #fff; }
+        .main-btn:disabled { background: #3a3d4d; color: #777; }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <span id="user-name">Пилот</span>
+        <div class="balance-box"><span id="balance">100</span> ⭐</div>
+    </div>
+
+    <div class="game-area" id="game-area">
+        <div class="multiplier" id="multiplier">1.00x</div>
+        <div class="sub-status" id="status">Сделайте ставку</div>
+        <div class="rocket" id="rocket">🚀</div>
+    </div>
+
+    <div class="controls">
+        <div class="bet-row">
+            <button class="bet-btn" onclick="changeBet(-5)">-5</button>
+            <span style="font-weight: bold; font-size: 18px;">Ставка: <span id="bet-amount">10</span> ⭐</span>
+            <button class="bet-btn" onclick="changeBet(5)">+5</button>
+        </div>
+        <button class="main-btn btn-start" id="action-btn" onclick="handleAction()">Поставить 10 ⭐</button>
+    </div>
+    <script>
+        const tg = window.Telegram.WebApp;
+        tg.expand();
+
+        if (tg.initDataUnsafe?.user) {
+            document.getElementById('user-name').innerText = tg.initDataUnsafe.user.first_name;
+        }
+
+        let balance = 100, bet = 10, mult = 1.00, crashPoint = 1.00;
+        let isFlying = false, cashedOut = false, timer = null;
+
+        const balEl = document.getElementById('balance');
+        const betEl = document.getElementById('bet-amount');
+        const multEl = document.getElementById('multiplier');
+        const statEl = document.getElementById('status');
+        const rockEl = document.getElementById('rocket');
+        const btn = document.getElementById('action-btn');
+
+        function changeBet(delta) {
+            if (!isFlying && bet + delta >= 5 && bet + delta <= balance) {
+                bet += delta;
+                betEl.innerText = bet;
+                btn.innerText = `Поставить ${bet} ⭐`;
+            }
+        }
+
+        function handleAction() {
+            if (!isFlying) startGame();
+            else if (!cashedOut) cashOut();
+        }
+
+        function startGame() {
+            if (balance < bet) {
+                tg.HapticFeedback.notificationOccurred('error');
+                statEl.innerText = 'Недостаточно звёзд!';
+                return;
+            }
+            balance -= bet;
+            balEl.innerText = balance;
+            isFlying = true;
+            cashedOut = false;
+            mult = 1.00;
+            crashPoint = Math.random() < 0.05 ? 1.00 : Math.min(0.96 / (1 - Math.random()), 50);
+
+            multEl.className = 'multiplier';
+            multEl.innerText = '1.00x';
+            statEl.innerText = 'Ракета летит...';
+            rockEl.innerText = '🚀';
+            rockEl.style.transform = 'translate(0px, 0px)';
+            btn.className = 'main-btn btn-cashout';
+            btn.innerText = `Забрать ${bet} ⭐`;
+
+            let step = 0;
+            timer = setInterval(() => {
+                step++;
+                mult += 0.01 + (step * 0.0004);
+                if (mult >= crashPoint) return crash();
+
+                multEl.innerText = mult.toFixed(2) + 'x';
+                const move = Math.min(step * 2.5, 220);
+                rockEl.style.transform = `translate(${move}px, -${move}px)`;
+
+                if (!cashedOut) {
+                    btn.innerText = `Забрать ${Math.floor(bet * mult)} ⭐`;
+                }
+            }, 60);
+        }
+
+        function cashOut() {
+            cashedOut = true;
+            const win = Math.floor(bet * mult);
+            balance += win;
+            balEl.innerText = balance;
+            multEl.className = 'multiplier win';
+            statEl.innerText = `Успели! Выигрыш: +${win} ⭐`;
+            btn.disabled = true;
+            btn.innerText = 'Выигрыш забран';
+            tg.HapticFeedback.notificationOccurred('success');
+        }
+
+        function crash() {
+            clearInterval(timer);
+            isFlying = false;
+            multEl.innerText = crashPoint.toFixed(2) + 'x';
+            multEl.className = 'multiplier crashed';
+            rockEl.innerText = '💥';
+            tg.HapticFeedback.notificationOccurred('error');
+
+            if (!cashedOut) statEl.innerText = 'БУМ! Ставка сгорела.';
+            else statEl.innerText += ` (Взрыв на ${crashPoint.toFixed(2)}x)`;
+
+            setTimeout(() => {
+                btn.disabled = false;
+                btn.className = 'main-btn btn-start';
+                btn.innerText = `Поставить ${bet} ⭐`;
+            }, 1500);
+        }
+    </script>
+</body>
+</html>
